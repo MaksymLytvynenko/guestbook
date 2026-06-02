@@ -1,31 +1,14 @@
 <?php
-// TODO 1: PREPARING ENVIRONMENT: 1) session 2) functions
-
 session_start();
-$filename = 'comments.csv';
-$errors = [];
 
-function getComments($file) {
-    $comments = [];
-    if (file_exists($file)) {
-        $fileStream = fopen($file, "r");
-        if ($fileStream) {
-            while (!feof($fileStream)) {
-                $jsonString = fgets($fileStream);
-                if (!empty(trim($jsonString))) {
-                    $array = json_decode($jsonString, true);
-                    if (!empty($array)) {
-                        $comments[] = $array;
-                    }
-                }
-            }
-            fclose($fileStream);
-        }
-    }
-    return array_reverse($comments);
+$aConfig = require_once 'config.php';
+$db = mysqli_connect($aConfig['host'], $aConfig['user'], $aConfig['pass'], $aConfig['name']);
+
+if (!$db) {
+    die("Помилка з'єднання з базою даних: " . mysqli_connect_error());
 }
 
-// TODO 2: ROUTING
+$errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = filter_input(INPUT_POST, 'email', FILTER_VALIDATE_EMAIL);
@@ -37,33 +20,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($text)) $errors[] = "The 'Comment' field cannot be empty.";
 
     if (empty($errors)) {
-        $commentData = [
-                'email' => $email,
-                'name' => $name,
-                'text' => $text,
-                'date' => date('Y-m-d H:i:s')
-        ];
+        $emailEsc = mysqli_real_escape_string($db, $email);
+        $nameEsc = mysqli_real_escape_string($db, $name);
+        $textEsc = mysqli_real_escape_string($db, $text);
 
-        $jsonString = json_encode($commentData);
-        $fileStream = fopen($filename, 'a');
+        $query = "INSERT INTO comments (email, name, text) VALUES ('$emailEsc', '$nameEsc', '$textEsc')";
 
-        if ($fileStream) {
-            fwrite($fileStream, $jsonString . "\n");
-            fclose($fileStream);
+        if (mysqli_query($db, $query)) {
             header("Location: guestbook.php");
             exit();
         } else {
-            $errors[] = "Failed to open the file for writing.";
+            $errors[] = "Помилка бази даних: " . mysqli_error($db);
         }
     }
 }
 
-$commentsList = getComments($filename);
+$query = "SELECT * FROM comments ORDER BY date DESC";
+$dbResponse = mysqli_query($db, $query);
 
-// TODO 3: CODE by REQUEST METHODS (ACTIONS) GET, POST, etc. (handle data from request): 1) validate 2) working with data source 3) transforming data
+$commentsList = [];
+if ($dbResponse) {
+    $commentsList = mysqli_fetch_all($dbResponse, MYSQLI_ASSOC);
+}
 
-// TODO 4: RENDER: 1) view (html) 2) data (from php)
-
+mysqli_close($db);
 ?>
 
 <!DOCTYPE html>
@@ -119,10 +99,10 @@ $commentsList = getComments($filename);
                             <div class="card mb-3">
                                 <div class="card-body">
                                     <h6 class="card-subtitle mb-2 text-muted">
-                                        <i class="fa-solid fa-user"></i> <?= $comment['name'] ?>
-                                        (<a href="mailto:<?= $comment['email'] ?>"><?= $comment['email'] ?></a>)
+                                        <i class="fa-solid fa-user"></i> <?= htmlspecialchars($comment['name']) ?>
+                                        (<a href="mailto:<?= htmlspecialchars($comment['email']) ?>"><?= htmlspecialchars($comment['email']) ?></a>)
                                     </h6>
-                                    <p class="card-text"><?= nl2br($comment['text']) ?></p>
+                                    <p class="card-text"><?= nl2br(htmlspecialchars($comment['text'])) ?></p>
                                     <small class="text-muted"><?= $comment['date'] ?></small>
                                 </div>
                             </div>
